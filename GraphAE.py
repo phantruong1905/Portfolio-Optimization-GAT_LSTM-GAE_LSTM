@@ -32,10 +32,6 @@ def compute_log_return_split(train_df, val_df, test_df):
 
     return train_df, val_df, test_df
 
-
-
-
-
 def create_corr_edges_with_weights(df, symbols, threshold=0.3, price_col='Adj Close'):
     """
     Create edges based on the correlation of log returns within the given DataFrame (e.g., a month's data).
@@ -50,23 +46,12 @@ def create_corr_edges_with_weights(df, symbols, threshold=0.3, price_col='Adj Cl
         edge_index (torch.Tensor): Edge indices [2, num_edges]
         edge_attr (torch.Tensor): Edge weights [num_edges, 1]
     """
-    # Ensure Date is in datetime format
     df = df.copy()
     df['Date'] = pd.to_datetime(df['Date'])
-
-    # Remove duplicates based on Symbol and Date
     df = df.drop_duplicates(subset=['Symbol', 'Date'], keep='last')
-
-    # Ensure Adj Close is numeric
     df[price_col] = pd.to_numeric(df[price_col], errors='coerce')
-
-    # Sort by Symbol and Date to ensure correct shift
     df = df.sort_values(['Symbol', 'Date'])
-
-    # Compute log returns using transform to preserve the index
     df['Log Return'] = df.groupby('Symbol')[price_col].transform(lambda x: np.log(x / x.shift(1)))
-
-    # Drop NaN values (first row of each stock will have NaN log return)
     df = df.dropna(subset=['Log Return'])
 
     # Get the symbols present in this month's data
@@ -149,10 +134,9 @@ def normalize_splits(train_df, val_df, test_df):
     Normalize only 'log_return' while keeping other features unchanged.
     """
     normalized_col = ['log_return', "volatility_atr", "trend_macd", "trend_adx", "trend_sma_fast", "momentum_rsi", 'Open', 'High', 'Low',
-       'Adj Close', 'Volume']  # Only normalize log_return
-    feature_cols = normalized_col  # All features
+       'Adj Close', 'Volume']
+    feature_cols = normalized_col
 
-    # Apply StandardScaler ONLY to log_return
     scaler = StandardScaler()
     train_df[normalized_col] = scaler.fit_transform(train_df[normalized_col])
     val_df[normalized_col] = scaler.transform(val_df[normalized_col])
@@ -168,87 +152,6 @@ def prepare_gnn_lstm_data(train_df, val_df, test_df):
     train_df, val_df, test_df, feature_cols, scaler = normalize_splits(train_df, val_df, test_df)
     print(f"Features normalized: {len(feature_cols)} features")
     return train_df, val_df, test_df, feature_cols, scaler
-
-
-
-
-#-----------------------------------------------------------------------------------------------------------------------#
-
-import os
-import torch
-import torch.nn as nn
-import numpy as np
-import matplotlib.pyplot as plt
-from torch.utils.data import DataLoader
-from tqdm import tqdm
-from torch_geometric.data import Batch
-import torch.optim as optim
-from torch_geometric.nn import GAE
-from torch_geometric.utils import train_test_split_edges
-
-from utils.loss import SharpeRatioLoss, LogReturnLoss
-from utils.graph_dataset import GNNLSTMDataset
-from torch.utils.data import Dataset, DataLoader
-
-from models.GAT_LSTM import GraphAutoencoder
-
-from src.data_loader import fetch_stock_data
-from src.feature_engineering import generate_features
-from torch_geometric.transforms import RandomLinkSplit
-
-
-def create_train_graph(train_dataset, edge_index, edge_attr, feature_cols):
-    train_data = Data(
-        x=torch.tensor(train_dataset[feature_cols].values, dtype=torch.float),
-        edge_index=edge_index,
-        edge_attr=edge_attr
-    )
-
-    transform = RandomLinkSplit(
-        num_val=0.05, num_test=0.1,  # Adjust train/val/test split as needed
-        is_undirected=True,
-        add_negative_train_samples=False
-    )
-
-    train_data, val_data, test_data = transform(train_data)  # ✅ Now includes `train_pos_edge_index`
-
-    return train_data, val_data, test_data
-
-
-def train_gae(model, train_data, epochs, lr):
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    loss_fn = nn.BCEWithLogitsLoss()  # Binary classification loss for edge prediction
-
-    for epoch in range(epochs):
-        model.train()
-        optimizer.zero_grad()
-
-        # 🔥 Get embeddings (z) and predict adjacency matrix
-        z = model.encoder(train_data.x, train_data.edge_index)  # Use `edge_index`
-        adj_pred = model.decode(z, train_data.edge_label_index)  # Use `edge_label_index`
-
-        # Create ground truth adjacency (1 for existing edges, 0 for others)
-        target_adj = torch.ones_like(adj_pred)
-
-        loss = loss_fn(adj_pred, target_adj)
-        loss.backward()
-        optimizer.step()
-
-        if epoch % 10 == 0:
-            print(f"Epoch {epoch}: Train Loss: {loss.item():.4f}")
-
-    return model
-
-
-def get_node_embeddings(model, train_data):
-    """Extracts node embeddings from the trained GAE model."""
-    model.eval()
-    with torch.no_grad():
-        z = model.encode(train_data.x, train_data.train_pos_edge_index)
-    return z  # Final embeddings of stocks
-
-
-
 
 
 

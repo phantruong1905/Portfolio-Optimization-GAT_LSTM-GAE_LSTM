@@ -23,10 +23,8 @@ class StockLSTM(nn.Module):
         self.hidden_dim = hidden_dim
 
     def forward(self, x):
-        # x: [batch_size, seq_len, input_dim]
-        lstm_out, (h_n, c_n) = self.lstm(x)  # lstm_out: [batch_size, seq_len, hidden_dim]
-        # Use the last hidden state
-        return h_n[-1]  # [batch_size, hidden_dim]
+        lstm_out, (h_n, c_n) = self.lstm(x)
+        return h_n[-1]
 
 
 class PortfolioLSTM(nn.Module):
@@ -37,26 +35,22 @@ class PortfolioLSTM(nn.Module):
         self.fc = nn.Linear(hidden_dim * num_assets, num_assets)
 
     def forward(self, x, mask):
-        # x: [batch_size, num_assets, seq_len, input_dim]
-        # mask: [batch_size, num_assets]
         batch_size = x.size(0)
         lstm_outputs = []
 
         for i in range(self.num_assets):
-            stock_input = x[:, i, :, :]  # [batch_size, seq_len, input_dim]
-            stock_output = self.stock_lstm(stock_input)  # [batch_size, hidden_dim]
+            stock_input = x[:, i, :, :]
+            stock_output = self.stock_lstm(stock_input)
             lstm_outputs.append(stock_output)
 
         combined = torch.cat(lstm_outputs, dim=1)  # [batch_size, hidden_dim * num_assets]
-        weights = self.fc(combined)  # [batch_size, num_assets]
-        weights = F.softmax(weights, dim=1)  # [batch_size, num_assets]
-
-        # Apply mask to zero out weights for unavailable stocks
-        weights = weights * mask  # [batch_size, num_assets]
+        weights = self.fc(combined)
+        weights = F.softmax(weights, dim=1)
+        weights = weights * mask
 
         # Re-normalize weights to sum to 1 for available stocks (avoid division by zero)
         weights_sum = torch.sum(weights, dim=1, keepdim=True) + 1e-8
-        weights = weights / weights_sum  # [batch_size, num_assets]
+        weights = weights / weights_sum
 
         return weights
 
@@ -67,9 +61,7 @@ class PortfolioMSELoss(nn.Module):
     def forward(self, pred_weights, actual_returns, mask):
         # Apply mask to weights and returns
         masked_weights = pred_weights * mask
-        portfolio_pred_return = torch.sum(masked_weights * actual_returns, dim=1)  # [batch_size]
-
-        # Target: average return with 1/N allocation (could use other benchmarks here too)
+        portfolio_pred_return = torch.sum(masked_weights * actual_returns, dim=1)
         actual_portfolio_return = torch.sum(mask * actual_returns, dim=1) / (mask.sum(dim=1) + 1e-8)
 
         return F.mse_loss(portfolio_pred_return, actual_portfolio_return)
@@ -82,22 +74,17 @@ class SharpeRatioLoss(nn.Module):
         self.annualization_factor = annualization_factor
 
     def forward(self, pred_weights, actual_returns, mask):
-        # pred_weights: [batch_size, num_assets]
-        # actual_returns: [batch_size, num_assets]
-        # mask: [batch_size, num_assets]
 
-        # Apply mask to weights and returns
-        masked_weights = pred_weights * mask  # [batch_size, num_assets]
-        portfolio_returns = torch.sum(masked_weights * actual_returns, dim=1)  # [batch_size]
+        masked_weights = pred_weights * mask
+        portfolio_returns = torch.sum(masked_weights * actual_returns, dim=1)
 
-        # Compute mean and std only for batches with at least one valid return
         mean_return = portfolio_returns.mean()
-        std_return = portfolio_returns.std(unbiased=False) + 1e-6  # Avoid division by zero
+        std_return = portfolio_returns.std(unbiased=False) + 1e-6
 
         sharpe_ratio = (mean_return - self.risk_free_rate) / std_return
         sharpe_ratio *= torch.sqrt(torch.tensor(self.annualization_factor, device=pred_weights.device))
 
-        return -sharpe_ratio  # Negative for minimization
+        return -sharpe_ratio
 
 
 class SimpleStockDataset(Dataset):
@@ -141,11 +128,8 @@ class SimpleStockDataset(Dataset):
 
         # Extract embedding columns
         embedding_cols = [col for col in embeddings_df.columns if col.startswith('dim_')]
-
-        # Create date range for embeddings
         all_embed_dates = sorted(embeddings_df['Date'].unique())
 
-        # Create pivot tables for embeddings
         logger.info("Creating pivot tables for embeddings...")
         embeddings_pivot = {}
         for col in embedding_cols:
@@ -389,12 +373,10 @@ def main():
     DATA_PATH = os.getenv("DATA_PATH", "data")
     logger.info(f"Using DATA_PATH: {DATA_PATH}")
 
-    # 2️⃣ Load Processed Data
     train_df = pd.read_pickle(os.path.join(DATA_PATH, "train.pkl"))
     val_df = pd.read_pickle(os.path.join(DATA_PATH, "val.pkl"))
     test_df = pd.read_pickle(os.path.join(DATA_PATH, "test.pkl"))
 
-    # Debug step - check log returns calculation in train_df
     print("Checking a sample of log returns calculation:")
     sample_symbol = train_df['Symbol'].iloc[0]
     verify_df = verify_log_returns_calculation(train_df, sample_symbol)
@@ -414,9 +396,6 @@ def main():
     train_df['Date'] = pd.to_datetime(train_df['Date'])
     val_df['Date'] = pd.to_datetime(val_df['Date'])
     test_df['Date'] = pd.to_datetime(test_df['Date'])
-
-    # We don't need to pre-compute log returns here anymore
-    # as the SimpleStockDataset will handle that internally
 
     symbols = sorted(embeddings_train['Symbol'].unique())
     num_assets = len(symbols)

@@ -4,10 +4,6 @@ from dotenv import load_dotenv
 from sklearn.preprocessing import StandardScaler
 from torch_geometric.data import Data
 
-
-# --------------------------
-# 🚀 Fix Date-Based Splitting
-# --------------------------
 def split_by_date(df, train_ratio=0.8, val_ratio=0.1):
     """
     Split dataframe into train, validation, and test sets based on chronological order.
@@ -41,10 +37,6 @@ def split_by_date(df, train_ratio=0.8, val_ratio=0.1):
 
     return train_df, val_df, test_df
 
-
-# --------------------------
-# 🛠 Compute Log Returns Correctly
-# --------------------------
 def compute_log_return_split(train_df, val_df, test_df):
     """
     Compute log returns while maintaining split integrity.
@@ -70,10 +62,6 @@ def compute_log_return_split(train_df, val_df, test_df):
 
     return train_df, val_df, test_df
 
-
-# --------------------------
-# 🔧 Fix Edge Creation Function
-# --------------------------
 def create_corr_edges_with_weights(df, threshold=0.3):
     df = df.reset_index(drop=True)
     price_df = df.pivot_table(index="Date", columns="Symbol", values="Adj Close")
@@ -118,10 +106,6 @@ def create_corr_edges_with_weights(df, threshold=0.3):
 
     return edge_index, edge_attr, symbols
 
-
-# --------------------------
-# 🚀 Normalize Train, Val, Test Separately
-# --------------------------
 def normalize_splits(train_df, val_df, test_df):
     """
     Normalize features across train, validation, and test sets.
@@ -140,10 +124,6 @@ def normalize_splits(train_df, val_df, test_df):
 
     return train_df, val_df, test_df, feature_cols
 
-
-# --------------------------
-# 🔥 Final Data Preparation Pipeline
-# --------------------------
 def prepare_gnn_lstm_data(data_path, seq_len=10, corr_threshold=0.3):
     """
     Complete pipeline to prepare data for GAT-LSTM training.
@@ -156,10 +136,10 @@ def prepare_gnn_lstm_data(data_path, seq_len=10, corr_threshold=0.3):
     Returns:
         Processed datasets and metadata
     """
-    print(f"📂 Loading data from {data_path}...")
+    print(f"Loading data from {data_path}...")
     df = pd.read_pickle(data_path)
 
-    print(f"✅ Data Loaded: {len(df)} rows, {df['Symbol'].nunique()} symbols")
+    print(f"Data Loaded: {len(df)} rows, {df['Symbol'].nunique()} symbols")
 
     # Split Data by Date
     train_df, val_df, test_df = split_by_date(df)
@@ -178,7 +158,7 @@ def prepare_gnn_lstm_data(data_path, seq_len=10, corr_threshold=0.3):
         train_df, val_df, test_df, edge_index, edge_attr, feature_cols, seq_len
     )
 
-    print(f"✅ Datasets: Train {len(train_dataset)}, Val {len(val_dataset)}, Test {len(test_dataset)}")
+    print(f"Datasets: Train {len(train_dataset)}, Val {len(val_dataset)}, Test {len(test_dataset)}")
 
     return {
         'train_dataset': train_dataset,
@@ -216,21 +196,15 @@ def collate_fn(batch):
 
     data_seq, target_returns = zip(*batch)  # Unzip batch into graphs & targets
 
-    # 🛠 Ensure `data_seq` is a list, not a tuple of lists
     if isinstance(data_seq[0], list):
-        data_seq = list(data_seq[0])  # Extract the list inside the tuple
+        data_seq = list(data_seq[0])
 
-    # 🔄 Batch graphs properly
     batched_graph = Batch.from_data_list(data_seq)
 
     print(f"Type: {type(target_returns)}, Length: {len(target_returns)}, Content: {target_returns}")
 
     # Convert target returns to a tensor
     target_returns = torch.stack(target_returns, dim=0).unsqueeze(-1)
-
-
-
-
 
     return batched_graph, target_returns
 
@@ -405,13 +379,6 @@ def train_gat_lstm(
 
                 pred_weights = model(data_seq)
 
-
-                # # Handle batch size mismatch (shouldn't happen but just in case)
-                # if pred_weights.shape[0] != target_returns_adjusted.shape[0]:
-                #     min_batch = min(pred_weights.shape[0], target_returns_adjusted.shape[0])
-                #     pred_weights = pred_weights[:min_batch]
-                #     target_returns_adjusted = target_returns_adjusted[:min_batch]
-
                 # Compute loss
                 loss = criterion(pred_weights, target_returns_adjusted)
 
@@ -450,7 +417,7 @@ def train_gat_lstm(
                             )
                         )
                     else:
-                        target_returns_adjusted = target_returns  # No change needed if VNINDEX is not in data
+                        target_returns_adjusted = target_returns
 
                     # Forward pass
                     pred_weights = model(data_seq)
@@ -495,7 +462,7 @@ def train_gat_lstm(
                     'num_assets': num_assets
                 }
             }, model_save_path)
-            print(f"✅ Model saved with val loss: {best_val_loss:.4f}")
+            print(f"Model saved with val loss: {best_val_loss:.4f}")
             early_stopping_counter = 0
         else:
             early_stopping_counter += 1
@@ -539,15 +506,9 @@ def train_gat_lstm(
                 pred_weights = model(data_seq)
                 print(f"Model output shape: {pred_weights.shape}")
 
-                # # Handle batch size mismatch (same as validation)
-                # if pred_weights.shape[0] != target_returns_adjusted.shape[0]:
-                #     min_batch = min(pred_weights.shape[0], target_returns_adjusted.shape[0])
-                #     pred_weights = pred_weights[:min_batch]
-                #     target_returns_adjusted = target_returns_adjusted[:min_batch]
-
-                print(f"pred_weights shape: {pred_weights.shape}")  # Expected: [batch_size, num_assets]
+                print(f"pred_weights shape: {pred_weights.shape}")
                 print(
-                    f"target_returns_adjusted shape: {target_returns_adjusted.shape}")  # Expected: [batch_size, num_assets]
+                    f"target_returns_adjusted shape: {target_returns_adjusted.shape}")
 
 
                 # Compute loss
@@ -718,25 +679,24 @@ def main(stock_list, config):
 
 
 if __name__ == "__main__":
-    stock_list = ["VNINDEX", "CTG", "HCM"]
+    stock_list = ["VNINDEX", "CTG", "MBB", "TCB", "STB" "HCM", "VCI", "HAH", "VSC", "FPT"]
 
     config = {
-        "seq_len": 15,  # Reduce sequence length to lower memory usage
-        "batch_size": 32,  # Reduce batch size to fit GPU memory
-        "num_epochs": 1,  # Allow enough training time
-        "learning_rate": 1e-3,  # Keep learning rate stable
-        "weight_decay": 1e-4,  # Moderate regularization
+        "seq_len": 15,
+        "batch_size": 32,
+        "learning_rate": 1e-3,
+        "weight_decay": 1e-4,  
         "patience": 7,
         "early_stopping_patience": 10,
         "input_dim": 7,
-        "hid_dim": 32,  # Reduce GAT hidden dim to cut params (was 128)
+        "hid_dim": 32,
         "edge_dim": 1,
-        "gnn_embed_dim": 32,  # Reduce GNN embedding size
-        "lstm_hidden_dim": 32,  # Reduce LSTM size to lower param count
-        "lstm_layers": 1,  # Use a single LSTM layer to save memory
+        "gnn_embed_dim": 32,
+        "lstm_hidden_dim": 32,
+        "lstm_layers": 1,
         "dropout": 0.2,
-        "mlp_hidden_dim": 32,  # Reduce MLP size
-        "gat_heads": 2,  # Reduce attention heads (was 8)
+        "mlp_hidden_dim": 32,
+        "gat_heads": 2,
         "model_save_path": "checkpoint/gat_lstm_portfolio.pt",
         "corr_threshold": 0.6
     }
